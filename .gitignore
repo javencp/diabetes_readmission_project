@@ -1,0 +1,5 @@
+# Database (regenerate via sql/schema.sql, load_data.sql, feature.sql)
+db/*.db
+
+# VS Code workspace settings (contains local machine paths)
+.vscode/
