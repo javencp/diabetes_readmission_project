@@ -3,3 +3,10 @@ db/*.db
 
 # VS Code workspace settings (contains local machine paths)
 .vscode/
+
+# Virtual environment directories
+venv/
+
+# Python cache files
+__pycache__/
+*.pyc
