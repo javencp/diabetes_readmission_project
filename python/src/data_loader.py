@@ -8,8 +8,10 @@ import sqlite3
 from pathlib import Path
 import pandas as pd
 
-
-default_db_path = Path("db/diabetic_data.db")
+# This file lives at python/src/data_loader.py, so parents[2] walks
+# up (src -> python -> project root) to reach the project root
+project_root = Path(__file__).resolve().parents[2]
+default_db_path = project_root / "db" / "diabetic_data.db"
 feature_table = "ml_features"
 
 
@@ -23,8 +25,7 @@ def load_features(db_path=default_db_path, table_name=feature_table):
     # Check that the database file exists
     if not db_path.exists():
         raise FileNotFoundError(
-            f"Database not found at {db_path.resolve()}. "
-            "Check that you're running from the project root."
+            f"Database not found at {db_path}. "
         )
 
     # Connect to the SQLite database and load the feature table into a pandas DataFrame
