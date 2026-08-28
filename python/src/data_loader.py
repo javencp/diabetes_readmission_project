@@ -50,6 +50,7 @@ def _run_sanity_checks(df):
 
     n_patients = df["patient_nbr"].nunique()
     print(f"Unique patients: {n_patients:,}")
+    print()
 
     # detect missing values in the dataframe and print columns with missing values
     null_counts = df.isnull().sum()
@@ -60,11 +61,14 @@ def _run_sanity_checks(df):
     else:
         print("No missing values detected.")
 
+    print()
+
     # calculates and prints the percentage of the positive class
     # i.e. the readmission rate within 30 days
     if "readmitted_30" in df.columns:
         rate = df["readmitted_30"].mean()
         print(f"Readmitted-within-30-days rate: {rate:.2%}")
+        print()
 
 
 if __name__ == "__main__":
