@@ -3,11 +3,15 @@ preprocessing.py
 
 Cleaning and encoding logic for the ml_features table.
 
-Split into two stages, run in this order relative to split.py:
-1. clean_data() - run on the full dataset. Drops rows that 
-shouldn't be in the modeling population, and fixes missing values. 
-2. encode_categoricals()  - apply one-hot encoding to categorical columns 
-after split, the encoder is fit on the train set and applied to both train and test sets.  
+Data workflow: 
+1. clean_data() - (in preprocessing.py) run on the full dataset. Drops rows that 
+    shouldn't be in the modeling population, and fixes missing values. 
+2. patient_split() - (in split.py) run on the cleaned DataFrame, 
+    returning train and test DataFrames. 
+3. get_features_and_target() - (in split.py) is run on the train and test DataFrames to 
+    produce feature matrices and target vectors.
+4. encode_categoricals() - (in preprocessing.py) performs one-hot encoding on the categorical features
+    in the feature matrices
 """
 
 import pandas as pd
@@ -39,9 +43,8 @@ def clean_data(df):
     df = _drop_invalid_gender(df)
     df = _fill_missing_race(df)
 
-    print(f"Raw data: {start_rows:,} encounters; Cleaned data: {len(df):,} encounters "
+    print(f"\nRaw data: {start_rows:,} encounters; Cleaned data: {len(df):,} encounters "
           f"({start_rows - len(df):,} dropped total).")
-    print()
     return df
 
 def _drop_death_hospice(df):
@@ -76,38 +79,35 @@ def _fill_missing_race(df):
     return df
 
 # Stage 2: Encode categorical columns after train/test split
-NON_FEATURE_COLUMNS = ["encounter_id", "patient_nbr", "readmitted_30"]
-
-
-def encode_categoricals(train_df, test_df):
+def encode_categoricals(X_train, X_test):
     """
-    One-hot encode categorical columns, fit on train only, applied to both.
+    One-hot encode categorical columns, fit on X_train only, applied to both.
+    This keeps train/test columns guaranteed identical.
+ 
+    Input: X_train, X_test (both pd.DataFrame)
+        Expects the feature matrices which should be 
+        the output of split.get_features_and_target().
+ 
+    Output: X_train_encoded, X_test_encoded (both pd.DataFrame)
+        Same rows as input, but with categorical columns one-hot encoded 
+        and original categorical columns dropped.
     """
 
-    categorical_cols = _get_categorical_columns(train_df)
+    categorical_cols = X_train.select_dtypes(include=["object", "string"]).columns.tolist()
     print(f"Encoding {len(categorical_cols)} categorical columns: {categorical_cols}")
-    print()
-
+ 
     encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
-    encoder.fit(train_df[categorical_cols])
+    encoder.fit(X_train[categorical_cols])
 
-    # Apply the fitted encoder to both train and test sets
-    train_encoded = _apply_encoding(train_df, encoder, categorical_cols)
-    test_encoded = _apply_encoding(test_df, encoder, categorical_cols)
-
-    print(f"Columns before encoding: {train_df.shape[1]} | after: {train_encoded.shape[1]}")
-    print()
-    return train_encoded, test_encoded
-
-
-def _get_categorical_columns(df):
-    """
-    Get a list of categorical columns/features in the DataFrame, excluding non-feature columns.
-    """
-    categorical = df.select_dtypes(include=["object", "string"]).columns.tolist()
-    return [col for col in categorical if col not in NON_FEATURE_COLUMNS]
+     # Apply the fitted encoder to both train and test feature matrices
+    X_train_encoded = _apply_encoding(X_train, encoder, categorical_cols)
+    X_test_encoded = _apply_encoding(X_test, encoder, categorical_cols)
+ 
+    print(f"\nColumns before encoding: {X_train.shape[1]} | after: {X_train_encoded.shape[1]}")
+    return X_train_encoded, X_test_encoded
 
 
+# Helper function to apply the fitted encoder to a DataFrame
 def _apply_encoding(df, encoder, categorical_cols):
     """
     Apply the fitted OneHotEncoder to a DataFrame and return the transformed DataFrame.
@@ -121,13 +121,15 @@ def _apply_encoding(df, encoder, categorical_cols):
     passthrough_df = df.drop(columns=categorical_cols)
     return pd.concat([passthrough_df, encoded_df], axis=1)
 
-if __name__ == "__main__":
-    # import the necessary functions from other modules to load data and split data
-    from src.data_loader import load_features
-    from src.split import patient_split
 
+if __name__ == "__main__":
+    from src.data_loader import load_features
+    from src.split import patient_split, get_features_and_target
+ 
     raw = load_features()
     cleaned = clean_data(raw)
     train, test = patient_split(cleaned)
-    train_encoded, test_encoded = encode_categoricals(train, test)
-    print(train_encoded.head())
+    X_train, y_train, ids_train = get_features_and_target(train)
+    X_test, y_test, ids_test = get_features_and_target(test)
+    X_train_encoded, X_test_encoded = encode_categoricals(X_train, X_test)
+    print(X_train_encoded.head())

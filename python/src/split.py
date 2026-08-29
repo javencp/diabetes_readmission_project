@@ -13,7 +13,7 @@ assign every encounter for a given patient to whichever set that patient landed 
 
 from sklearn.model_selection import train_test_split
 
-
+# Split into train/test sets 
 def patient_split(df, test_size=0.2, random_state=42):
     """
     Split a DataFrame into train/test sets using a 80/20 split
@@ -38,7 +38,19 @@ def patient_split(df, test_size=0.2, random_state=42):
 
     return train_df, test_df
 
+# Split Dataframe into feature matrix and target vector
+NON_FEATURE_COLUMNS = ["encounter_id", "patient_nbr", "readmitted_30"]
 
+def get_features_and_target(df, target_col="readmitted_30"):
+    """
+    Split an encoded DataFrame into a feature matrix X and target vector y.
+    """
+    y = df[target_col]
+    X = df.drop(columns=NON_FEATURE_COLUMNS)
+    ids = df[NON_FEATURE_COLUMNS[:2]]  # keep encounter_id and patient_nbr for reference
+    return X, y, ids 
+
+# helper functions for debugging and sanity checks utilized in patient_split()
 def _verify_no_patient_overlap(train_df, test_df):
     """
     Hard-fail if any patient somehow ended up in both sets.
@@ -58,7 +70,7 @@ def _print_split_summary(df, train_df, test_df):
     Print summary statistics about the train/test split for sanity checks.
     """
     # Ensure that the train/test split is roughly 80/20 by encounters
-    print(f"Total encounters: {len(df):,} | "
+    print(f"\nTotal encounters: {len(df):,} | "
           f"Train: {len(train_df):,} ({len(train_df) / len(df):.1%}) | "
           f"Test: {len(test_df):,} ({len(test_df) / len(df):.1%})")
 

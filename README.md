@@ -78,7 +78,9 @@ sqlite3 db/diabetic_data.db < sql/feature.sql
 ## Status
 - SQL side of the project (cleaning and transforming raw csv into a more usable format): DONE
 - Python side: In-progress
-  - load, preprocess, and split data
+  - load, preprocess, and split data --> Done
+  - Exploratory Data Analysis on the dataset population
   - train baseline (logistic regression)
-  - train alternative models (XGBoost, Random Forest)
+  - train alternative models (XGBoost, Random Forest, etc.)
   - evaluate models
+- Need to update README.md to be accurate (such as pip install -e for reproducibility)
