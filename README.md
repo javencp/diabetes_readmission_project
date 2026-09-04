@@ -24,25 +24,84 @@ The original research paper associated with this dataset:
 > Impact of HbA1c measurement on hospital readmission rates: Analysis of
 > 70,000 clinical database patient records. *BioMed Res Int.* 2014;2014:781670.
 
-## Project structure
+## How to Reproduce
+
+Clone the repo. The raw CSVs used below (`data/`) are included, no separate download needed.
+
+### 1. Build the database schema
+
+**macOS / Linux / Git Bash:**
+```bash
+sqlite3 db/diabetic_data.db < sql/schema.sql
+```
+
+**Windows PowerShell:**
+```powershell
+Get-Content sql/schema.sql | sqlite3 db/diabetic_data.db
+```
+
+### 2. Import the raw CSVs
+
+Open an interactive SQLite session from the project root and run:
 
 ```
-diabetes_readmission_project/
-├── data/                    # raw CSVs (UCI dataset + ID mapping lookups)
-├── db/                      # SQLite database (built from the scripts below)
-├── sql/
-│   ├── schema.sql           # table definitions based on raw CSVs
-│   ├── load_data.sql        # Cleans and loads data into tables
-│   └── feature.sql          # further cleans data and joins data into clean feature table for machine learning model
-└── python/                  # ML pipeline (in progress)
+sqlite3 db/diabetic_data.db
+.mode csv
+.import data/diabetic_data.csv raw_diabetic_data
+.import --skip 1 data/discharge_disposition.csv discharge_disposition
+.import --skip 1 data/admission_source.csv admission_source
+.import --skip 1 data/admission_type.csv admission_type
+.quit
 ```
-The three diagnosis fields (`diag_1`, `diag_2`, `diag_3`) were collapsed
-from several hundred distinct ICD-9 codes into 9 clinically meaningful
-categories. Below is the diagnosis categorizations derived from the research paper: 
-## Key design decisions
 
-- **SQLite** was chosen specifically for portability, the repo is
-  cloneable and runnable without any database server setup.
+### 3. Clean, load, and build features
+
+**macOS / Linux / Git Bash:**
+```bash
+sqlite3 db/diabetic_data.db < sql/load_data.sql
+sqlite3 db/diabetic_data.db < sql/features.sql
+```
+
+**Windows PowerShell:**
+```powershell
+Get-Content sql/load_data.sql | sqlite3 db/diabetic_data.db
+Get-Content sql/features.sql | sqlite3 db/diabetic_data.db
+```
+
+This produces the `ml_features` table (101,766 rows) that the Python pipeline reads from.
+
+### 4. Run the ML pipeline
+
+To install necessary Python packages as well as internal src/ packages run the commands below: 
+
+```bash
+pip install -r requirements.txt
+pip install -e .
+python run_pipeline.py
+```
+
+This trains the final logistic regression and Random Forest models and saves them to `models/`.
+Notebooks in `python/notebooks/` walk through the full EDA, tuning process, and model comparison.
+
+## Results
+
+| Model | Test ROC-AUC | Test PR-AUC | Recall @ threshold=0.45 | Precision @ threshold=0.45 |
+|---|---|---|---|---|
+| Logistic Regression | 0.665 | 0.227 | 0.682 | 0.163 |
+| Random Forest | 0.671 | 0.238 | 0.727 | 0.161 |
+
+Random Forest outperforms logistic regression on every metric, though the gap
+is modest. Both models agree that `number_inpatient` (prior inpatient visits) is the
+strongest predictor of 30-day readmission, consistent with relationship found during EDA.
+
+**Best Performing Model**: Random Forest at threshold≈0.45, prioritizing recall
+(catching ~73% of true 30-day readmissions) given the HRRP framing, at a
+precision of ~0.16.
+
+## Key Design Decisions
+
+- **Why SQL**: much of this pipeline could be done in pandas alone. SQL was used deliberately here as part of this project's goal to demonstrate combined SQL + Python/ML skills. Also separating the data into respective tables (encounters, patients, etc.) emulates how a hospital would store their records and data i.e. as related tables, not a single flat file. Building an SQL database also produces a file that can be opened and queried by anyone with any SQL client. 
+- **SQLite** was chosen specifically for portability, the repo is cloneable and runnable without any database server setup.
 - **Target** (readmitted within 30 days vs. not),
   the dataset has 3 targets: not readmitted, readmitted <30 days, and readmitted >30 days. 
   Since there is no penalty for a readmitted patient >30 days after discharge, readmission >30 days and non-readmitted patients were both aggregated to be the negative class. 
@@ -50,7 +109,7 @@ categories. Below is the diagnosis categorizations derived from the research pap
   `payer_code` (~52%), and `medical_specialty` (~53%) were excluded from
   the feature table rather than imputed.
 - **Diagnosis Categorization**: The three diagnosis fields (`diag_1`, `diag_2`, `diag_3`) were
-  were aggregated from several hundred distinct ICD-9 codes into 9 clinically meaningful catecories. Below is the diagnosis category lookup table derived from the original paper: 
+  aggregated from several hundred distinct ICD-9 codes into 9 clinically meaningful categories. Below is the diagnosis category lookup table derived from the original paper: 
 
 | Category | ICD-9 code ranges |
 |---|---|
@@ -64,23 +123,11 @@ categories. Below is the diagnosis categorizations derived from the research pap
 | Neoplasms | 140–239 |
 | Other | everything else (including V/E supplemental codes) |
 
-## How to reproduce
+- **Patient-level train/test split**: to prevent leakage from patients with multiple encounters appearing in both datasets.
+- **PR-AUC as primary tuning metric**: due to the class imbalance, where accuracy and ROC-AUC would risk being overly optimistic. Recall served as a secondary metric. 
+- **One-hot encoding was performed on categorical data**: logistic regression requires numerical features. Kept consistent for all models so that models are directly comparable. 
 
-```bash
-# From the project root, with sqlite3 on PATH:
-sqlite3 db/diabetic_data.db < sql/schema.sql
-sqlite3 db/diabetic_data.db < sql/load_data.sql
-sqlite3 db/diabetic_data.db < sql/feature.sql
-```
+## Future Work
 
-(On Windows PowerShell, use `Get-Content sql/schema.sql | sqlite3 db/diabetic_data.db` instead of `<` redirection.)
-
-## Status
-- SQL side of the project (cleaning and transforming raw csv into a more usable format): DONE
-- Python side: In-progress
-  - load, preprocess, and split data --> Done
-  - Exploratory Data Analysis on the dataset population
-  - train baseline (logistic regression)
-  - train alternative models (XGBoost, Random Forest, etc.)
-  - evaluate models
-- Need to update README.md to be accurate (such as pip install -e for reproducibility)
+- **XGBoost** — considered as a third model given its typically strong performance on tabular data.
+- **Alternative class imbalance handling** — both models used `class_weight='balanced'`; resampling approaches (e.g., SMOTE, undersampling) are other methods of handling imbalance, and could be compared against the current weighting-based approach.
