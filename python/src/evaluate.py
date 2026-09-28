@@ -10,6 +10,8 @@ from sklearn.metrics import (
     precision_score, recall_score, f1_score, accuracy_score,
     roc_curve, precision_recall_curve, confusion_matrix, ConfusionMatrixDisplay
 )
+import pandas as pd
+import numpy as np
 
 
 def compute_metrics(y_test, y_pred_proba, threshold=0.5):
@@ -85,3 +87,27 @@ def evaluate_model(y_test, y_pred_proba, threshold=0.5, plot=True):
         plot_evaluation(y_test, y_pred_proba, threshold=threshold)
 
     return metrics
+
+def threshold_sweep(y_true, y_pred_proba, thresholds=None):
+    """Precision, recall, F1, and accuracy across classification thresholds."""
+    if thresholds is None:
+        thresholds = np.round(np.arange(0.1, 0.9, 0.05), 2)
+    rows = []
+    for t in thresholds:
+        m = compute_metrics(y_true, y_pred_proba, threshold=t)
+        rows.append({k: m[k] for k in ("threshold", "precision", "recall", "f1", "accuracy")})
+    return pd.DataFrame(rows)
+
+
+def plot_threshold_sweep(sweep_df):
+    plt.figure(figsize=(8, 5))
+    for col, label in [("precision", "Precision"), ("recall", "Recall"),
+                       ("f1", "F1 Score"), ("accuracy", "Accuracy")]:
+        plt.plot(sweep_df["threshold"], sweep_df[col], label=label, marker="o")
+    plt.axvline(x=0.5, color="gray", linestyle="--", alpha=0.5, label="Default (0.5)")
+    plt.xlabel("Threshold")
+    plt.ylabel("Score")
+    plt.title("Precision, Recall, F1, and Accuracy vs. Classification Threshold")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()

@@ -126,8 +126,17 @@ precision of ~0.16.
 - **Patient-level train/test split**: to prevent leakage from patients with multiple encounters appearing in both datasets.
 - **PR-AUC as primary tuning metric**: due to the class imbalance, where accuracy and ROC-AUC would risk being overly optimistic. Recall served as a secondary metric. 
 - **One-hot encoding was performed on categorical data**: logistic regression requires numerical features. Kept consistent for all models so that models are directly comparable. 
+- **The best performing model during training and hyperparameter tuning was not always chosen**: instead the top 10 hyperparameter configurations were assessed individually. Models that have minimal overfitting without sacrificing performance are preferred over models with better results but overfit. The selection criteria is based on the difference (or gap) between the mean PR-AUC scores of the train and test folds from cross validation. A basic rule used to choose the model configuration was to select the configuration with the highest mean_test_score and a gap <0.10. Previous versions of this repo applied this logic, but assessment of overfitting was done on the gap between the full train and test sets. This resulted in leakage as final model selections were based on the held out test set. 
 
 ## Future Work
 
-- **XGBoost** — considered as a third model given its typically strong performance on tabular data.
-- **Alternative class imbalance handling** — both models used `class_weight='balanced'`; resampling approaches (e.g., SMOTE, undersampling) are other methods of handling imbalance, and could be compared against the current weighting-based approach.
+- **Alternative class imbalance handling** — models used `class_weight='balanced'` or `scale_pos_weight`; resampling approaches (e.g., SMOTE, undersampling) are other methods of handling imbalance, and could be compared against the current weighting-based approach.
+
+## Status
+
+- XGBoost: In-progress
+- XGBoost model makes improvements to overall workflow and addresses issues from previous models, this improvements and updates still has not been applied to the logistic regression and random forest model. Changes to be made: 
+  - Change model selection approach - i.e. gap between train and test folds
+  - Replace threshold code to call the evaluate function
+- Update README addressing XGBoost results
+- Update `run_pipeline.py` with XGBoost model
