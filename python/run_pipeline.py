@@ -1,9 +1,9 @@
 """
 End-to-end reproducible pipeline for the diabetes readmission project.
 
-Loads and preprocesses the data, fits both final models (logistic regression
-and Random Forest) using the hyperparameters selected during tuning (which occurs 
-in the notebooks 02_baseline_model.ipynb and 03_main_model.ipynb), evaluates
+Loads and preprocesses the data, fits final models (logistic regression, Random Forest, XGBoost) 
+using the hyperparameters selected during tuning (which occurs 
+in the notebooks 02_baseline_model.ipynb, 03_random_forest.ipynb, 04_xgboost.ipynb), evaluates
 them on the held-out test set, and saves the fitted models to disk.
 
 Excludes hyperparameter tuning and threshold selection, which are performed in the notebooks. 
@@ -17,6 +17,7 @@ from pathlib import Path
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
+from xgboost import XGBClassifier
 
 from src.data_loader import load_features
 from src.preprocessing import clean_data, encode_categoricals
@@ -77,12 +78,35 @@ def main():
     rf_train_metrics = compute_metrics(y_train, final_rf.predict_proba(X_train))
     rf_test_metrics = compute_metrics(y_test, final_rf.predict_proba(X_test))
     print(pd.DataFrame([rf_train_metrics, rf_test_metrics], index=["train", "test"]))
+    
+    #  XGBoost: fit final model 
+    print("\nFitting final XGBoost model...")
+    scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
+
+    final_xgb = XGBClassifier(
+        max_depth=5,
+        learning_rate=0.01,
+        n_estimators=700,
+        subsample=0.7,
+        colsample_bytree=0.8,
+        min_child_weight=15,
+        scale_pos_weight=scale_pos_weight,
+        eval_metric='aucpr',
+        random_state=42,
+        n_jobs=-1,
+    )
+    final_xgb.fit(X_train, y_train)
+
+    xgb_train_metrics = compute_metrics(y_train, final_xgb.predict_proba(X_train))
+    xgb_test_metrics = compute_metrics(y_test, final_xgb.predict_proba(X_test))
+    print(pd.DataFrame([xgb_train_metrics, xgb_test_metrics], index=["train", "test"]))
 
     # Save models
     print("\nSaving models...")
     joblib.dump(final_lr, MODELS_DIR / "logistic_regression_final.joblib")
     joblib.dump(scaler, MODELS_DIR / "scaler.joblib")
     joblib.dump(final_rf, MODELS_DIR / "random_forest_final.joblib")
+    joblib.dump(final_xgb, MODELS_DIR / "xgboost_final.joblib")
     print(f"Models saved to {MODELS_DIR.resolve()}")
 
 
