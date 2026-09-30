@@ -79,8 +79,7 @@ pip install -r requirements.txt
 pip install -e .
 python run_pipeline.py
 ```
-
-This trains the final logistic regression and Random Forest models and saves them to `models/`.
+This trains the final logistic regression, Random Forest, and XGBoost models and saves them to `models/`.
 Notebooks in `python/notebooks/` walk through the full EDA, tuning process, and model comparison.
 
 ## Results
@@ -89,14 +88,22 @@ Notebooks in `python/notebooks/` walk through the full EDA, tuning process, and 
 |---|---|---|---|---|
 | Logistic Regression | 0.665 | 0.227 | 0.682 | 0.163 |
 | Random Forest | 0.671 | 0.238 | 0.727 | 0.161 |
+| XGBoost | 0.676 | 0.244 | 0.713 | 0.163 |
 
-Random Forest outperforms logistic regression on every metric, though the gap
-is modest. Both models agree that `number_inpatient` (prior inpatient visits) is the
-strongest predictor of 30-day readmission, consistent with relationship found during EDA.
+All models exceed the random baseline for both metrics (ROC-AUC of 0.5, and PR-AUC of ~0.115 — the test set's positive class rate). Logistic Regression, Random Forest, and XGBoost achieve PR-AUC roughly 1.97x, 2.07x, and 2.12x the random baseline, respectively.
 
-**Best Performing Model**: Random Forest at threshold≈0.45, prioritizing recall
-(catching ~73% of true 30-day readmissions) given the HRRP framing, at a
-precision of ~0.16.
+XGBoost is the strongest performer on both threshold-independent metrics (PR-AUC and ROC-AUC),
+with Random Forest a close second. All three models agree that `number_inpatient` (prior inpatient
+visits) is the strongest predictor of 30-day readmission, consistent with the relationship found
+during EDA. Agreement across three independent model families strengthens confidence in that finding.
+
+At a matched threshold of 0.45, Random Forest edges ahead on recall (0.727 vs. XGBoost's 0.713) at
+a marginally lower precision. The two tree-based models are close enough here that the better choice depends on whether recall or overall balance matters more for the use case.
+
+**Best Performing Model**: XGBoost, based on the highest PR-AUC (0.244) and ROC-AUC (0.676). If the
+deployment priority is strictly maximizing recall (flagging as many true 30-day readmissions as
+possible, even at a further cost to precision) Random Forest at threshold≈0.45 (recall ≈0.73,
+precision ≈0.16) is a close, defensible alternative.
 
 ## Key Design Decisions
 
@@ -124,19 +131,13 @@ precision of ~0.16.
 | Other | everything else (including V/E supplemental codes) |
 
 - **Patient-level train/test split**: to prevent leakage from patients with multiple encounters appearing in both datasets.
-- **PR-AUC as primary tuning metric**: due to the class imbalance, where accuracy and ROC-AUC would risk being overly optimistic. Recall served as a secondary metric. 
+- **Precision-Recall Area under the Curve (PR-AUC) as primary tuning metric**: since we have a class imbalance, accuracy and ROC-AUC would risk being overly optimistic. With the PR-AUC, the baseline is the percentage of the positive class, which in our case is ~11.5%. Thus, we are aiming for a pr_auc value >0.115. Recall served as a secondary metric. 
 - **One-hot encoding was performed on categorical data**: logistic regression requires numerical features. Kept consistent for all models so that models are directly comparable. 
-- **The best performing model during training and hyperparameter tuning was not always chosen**: instead the top 10 hyperparameter configurations were assessed individually. Models that have minimal overfitting without sacrificing performance are preferred over models with better results but overfit. The selection criteria is based on the difference (or gap) between the mean PR-AUC scores of the train and test folds from cross validation. A basic rule used to choose the model configuration was to select the configuration with the highest mean_test_score and a gap <0.10. Previous versions of this repo applied this logic, but assessment of overfitting was done on the gap between the full train and test sets. This resulted in leakage as final model selections were based on the held out test set. 
+- **The best performing model during training and hyperparameter tuning was not always chosen**: instead the top 10 hyperparameter configurations were assessed individually. Models that have minimal overfitting without sacrificing performance are preferred over models with better results but overfit. The selection criteria is based on the difference (or gap) between the mean PR-AUC scores of the train and test folds from cross validation. A basic rule used to choose the model configuration was to select the configuration with the highest mean_test_score and a gap <0.10. Previous versions of this repo applied this logic, but assessment of overfitting was done on the gap between the full train and test sets. This resulted in leakage as final model selections were based on the held out test set.
+  *Note: This does not apply to the logistic regression model due to its simplicity and small hyperparameter grid space* 
 
 ## Future Work
 
-- **Alternative class imbalance handling** — models used `class_weight='balanced'` or `scale_pos_weight`; resampling approaches (e.g., SMOTE, undersampling) are other methods of handling imbalance, and could be compared against the current weighting-based approach.
-
-## Status
-
-- XGBoost: In-progress
-- XGBoost model makes improvements to overall workflow and addresses issues from previous models, this improvements and updates still has not been applied to the logistic regression and random forest model. Changes to be made: 
-  - Change model selection approach - i.e. gap between train and test folds
-  - Replace threshold code to call the evaluate function
-- Update README addressing XGBoost results
-- Update `run_pipeline.py` with XGBoost model
+- **Alternative class imbalance handling**: models used `class_weight='balanced'` or `scale_pos_weight`; resampling approaches (e.g., SMOTE, undersampling) are other methods of handling imbalance, and could be compared against the current weighting-based approach.
+- **Reduce encoding-driven feature bloat**. One-hot encoding expanded 51 columns to 165. Many of these are correlated drug-related dummy variables, which likely contributes to instability in Logistic Regression's coefficient estimates. XGBoost supports native categorical splitting (`enable_categorical=True`) that would avoid this expansion entirely for that model; a simpler alternative applicable to both tree-based models would be ordinal encoding, trading off some split interpretability for a much smaller, less collinear feature matrix.
+- **A model ensemble** (e.g., averaging or stacking the three models' predictions) could be explored, though the models here are similar enough in nature (all trained on the same feature set, with two of the three being tree-based) that any gain would likely be modest.
